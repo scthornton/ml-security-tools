@@ -35,6 +35,8 @@ htmlcov/
 # Content assets
 linkedin-article.md
 linkedin-post.md
+mlsecops-gap-header.png
+mlsec-toolkit-overview.png
 
 # AI tool artifacts
 .claude/
