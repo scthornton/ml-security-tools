@@ -252,7 +252,7 @@ def save_baseline(path: Path, baseline: Dict[str, Dict[str, Dict[str, float]]]) 
     path.write_text(json.dumps(baseline, indent=2) + "\n")
 
 
-def parse_args() -> argparse.Namespace:
+def parse_args(argv: Optional[List[str]] = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Evaluate adversarial robustness regression.")
     parser.add_argument("--model-script", required=True, help="Python module or path exposing the model factory.")
     parser.add_argument("--factory", default="create_model", help="Factory function name (default: create_model).")
@@ -284,11 +284,11 @@ def parse_args() -> argparse.Namespace:
         choices=tuple(PRECISION_MAP.keys()),
         help="Computation precision for evaluation.",
     )
-    return parser.parse_args()
+    return parser.parse_args(argv)
 
 
-def main() -> int:
-    args = parse_args()
+def main(argv: Optional[List[str]] = None) -> int:
+    args = parse_args(argv)
     attacks = [attack.lower() for attack in args.attacks]
 
     input_shape = tuple(int(dim) for dim in args.input_shape.split(","))

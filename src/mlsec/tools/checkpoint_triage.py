@@ -103,7 +103,6 @@ def inspect_state_dict(state_dict: Dict[str, torch.Tensor], threshold: float) ->
         with torch.no_grad():
             nan_count = torch.isnan(tensor).sum().item()
             inf_count = torch.isinf(tensor).sum().item()
-            # Use nanmax to avoid NaN masking extreme finite values
             finite_vals = tensor[torch.isfinite(tensor)]
             max_abs = finite_vals.abs().max().item() if finite_vals.numel() > 0 else 0.0
         if max_abs > threshold:
@@ -120,7 +119,6 @@ def tensor_histogram(tensor: torch.Tensor, bins: int = 64) -> Tuple[List[float],
     flat = tensor.detach().float().cpu().flatten()
     if flat.numel() == 0:
         return [0.0] * bins, (0.0, 0.0)
-    # Filter out NaN and Inf values to avoid histc crashes
     finite_mask = torch.isfinite(flat)
     flat = flat[finite_mask]
     if flat.numel() == 0:

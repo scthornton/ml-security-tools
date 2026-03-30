@@ -25,6 +25,17 @@ ENV/
 .DS_Store
 Thumbs.db
 
+# Test artifacts
+.coverage
+htmlcov/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Content assets
+linkedin-article.md
+linkedin-post.md
+
 # AI tool artifacts
 .claude/
 CLAUDE.md
