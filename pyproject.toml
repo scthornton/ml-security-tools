@@ -41,13 +41,14 @@ dependencies = [
 [project.optional-dependencies]
 vision = ["torchvision>=0.15"]
 transformers = ["transformers>=4.30"]
-onnx = ["onnx>=1.14", "onnxruntime>=1.15"]
+onnx = ["onnx>=1.14", "onnxruntime>=1.15", "onnxscript>=0.1"]
 safetensors = ["safetensors>=0.3"]
 all = [
     "torchvision>=0.15",
     "transformers>=4.30",
     "onnx>=1.14",
     "onnxruntime>=1.15",
+    "onnxscript>=0.1",
     "safetensors>=0.3",
 ]
 dev = [
