@@ -5,21 +5,19 @@ from __future__ import annotations
 import sys
 from pathlib import Path
 
-import pytest
-
 REPO_ROOT = Path(__file__).parent.parent
 sys.path.insert(0, str(REPO_ROOT))
 
 import triton_config_auditor as auditor  # noqa: E402
 
-
 # ===========================================================================
 # parse_block
 # ===========================================================================
 
+
 class TestParseBlock:
     def test_simple_key_value(self):
-        lines = ['name: "test"', 'max_batch_size: 8']
+        lines = ['name: "test"', "max_batch_size: 8"]
         result, _ = auditor.parse_block(lines)
         assert result["name"] == ['"test"']
         assert result["max_batch_size"] == ["8"]
@@ -39,8 +37,12 @@ class TestParseBlock:
 
     def test_multiple_blocks_same_key(self):
         lines = [
-            "input {", '  name: "A"', "}",
-            "input {", '  name: "B"', "}",
+            "input {",
+            '  name: "A"',
+            "}",
+            "input {",
+            '  name: "B"',
+            "}",
         ]
         result, _ = auditor.parse_block(lines)
         assert len(result["input"]) == 2
@@ -49,6 +51,7 @@ class TestParseBlock:
 # ===========================================================================
 # analyze_config — security checks
 # ===========================================================================
+
 
 class TestAnalyzeConfig:
     def test_well_configured_has_fewer_findings(self, tmp_path):
@@ -149,6 +152,7 @@ input {
 # iter_targets
 # ===========================================================================
 
+
 class TestIterTargets:
     def test_finds_files_by_path(self, tmp_path):
         f = tmp_path / "config.pbtxt"
@@ -171,6 +175,7 @@ class TestIterTargets:
 # ===========================================================================
 # CLI main
 # ===========================================================================
+
 
 class TestTritonMain:
     def test_main_with_valid_config(self, tmp_path):

@@ -21,8 +21,10 @@ import logging
 import re
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Dict, Iterable, List, Optional
+from typing import TYPE_CHECKING
 
+if TYPE_CHECKING:
+    from collections.abc import Iterable
 
 logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
 LOGGER = logging.getLogger("triton_config_auditor")
@@ -40,7 +42,7 @@ class ConfigFinding:
 @dataclass
 class ConfigReport:
     path: Path
-    findings: List[ConfigFinding] = field(default_factory=list)
+    findings: list[ConfigFinding] = field(default_factory=list)
 
     def add(self, severity: str, message: str) -> None:
         self.findings.append(ConfigFinding(severity=severity, message=message))
@@ -60,14 +62,14 @@ def preprocess(text: str) -> str:
     return text
 
 
-def parse_block(lines: List[str], start: int = 0) -> Dict[str, List[object]]:
+def parse_block(lines: list[str], start: int = 0) -> dict[str, list[object]]:
     """
     Recursively parse a pbtxt-like structure into nested dictionaries.
 
     Values are stored as lists to preserve multiple entries per key.
     Primitive values remain as strings; numeric conversion is deferred to checks.
     """
-    data: Dict[str, List[object]] = {}
+    data: dict[str, list[object]] = {}
     idx = start
     while idx < len(lines):
         raw_line = lines[idx]
@@ -94,21 +96,21 @@ def parse_block(lines: List[str], start: int = 0) -> Dict[str, List[object]]:
     return data, idx
 
 
-def load_config(path: Path) -> Dict[str, List[object]]:
+def load_config(path: Path) -> dict[str, list[object]]:
     text = preprocess(path.read_text())
     lines = text.splitlines()
     parsed, _ = parse_block(lines)
     return parsed
 
 
-def get_single_value(block: Dict[str, List[object]], key: str) -> Optional[str]:
+def get_single_value(block: dict[str, list[object]], key: str) -> str | None:
     values = block.get(key)
     if not values:
         return None
     return values[0]  # pbtxt stores repeated values explicitly; we only need the first occurrence here
 
 
-def to_int(value: Optional[str]) -> Optional[int]:
+def to_int(value: str | None) -> int | None:
     if value is None:
         return None
     try:
@@ -154,7 +156,7 @@ def analyze_config(path: Path) -> ConfigReport:
     if not dyn_batch_blocks:
         report.add("WARN", "dynamic_batching not configured. Define queue delays to mitigate DoS.")
     else:
-        for idx, block in enumerate(dyn_batch_blocks):
+        for _idx, block in enumerate(dyn_batch_blocks):
             if not isinstance(block, dict):
                 continue
             delay = to_int(get_single_value(block, "max_queue_delay_microseconds"))
@@ -210,7 +212,9 @@ def analyze_config(path: Path) -> ConfigReport:
     if parameter_blocks:
         if not any("guard" in key for key in parameter_keys):
             report.add("WARN", "parameters missing NeMo Guardrails/LLM guard configuration.")
-        if not any(any(term in key for term in ["auth", "token", "api_key", "authorization"]) for key in parameter_keys):
+        if not any(
+            any(term in key for term in ["auth", "token", "api_key", "authorization"]) for key in parameter_keys
+        ):
             report.add(
                 "WARN",
                 "parameters missing explicit auth controls (expected keys like auth/token/api_key).",
@@ -229,20 +233,16 @@ def analyze_config(path: Path) -> ConfigReport:
     return report
 
 
-def iter_targets(patterns: Iterable[str]) -> List[Path]:
+def iter_targets(patterns: Iterable[str]) -> list[Path]:
     """Expand glob patterns and return config paths."""
-    targets: List[Path] = []
+    targets: list[Path] = []
     for pattern in patterns:
         base = Path(pattern)
         if base.exists():
             if base.is_file():
                 targets.append(base.resolve())
             else:
-                targets.extend(
-                    path.resolve()
-                    for path in base.rglob("config.pbtxt")
-                    if path.is_file()
-                )
+                targets.extend(path.resolve() for path in base.rglob("config.pbtxt") if path.is_file())
             continue
         # Treat as glob
         for path in Path().glob(pattern):
@@ -251,7 +251,7 @@ def iter_targets(patterns: Iterable[str]) -> List[Path]:
     return sorted(set(targets))
 
 
-def parse_args(argv: Optional[List[str]] = None) -> argparse.Namespace:
+def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Audit Triton config.pbtxt files for security gaps.")
     parser.add_argument(
         "targets",
@@ -266,7 +266,7 @@ def parse_args(argv: Optional[List[str]] = None) -> argparse.Namespace:
     return parser.parse_args(argv)
 
 
-def main(argv: Optional[List[str]] = None) -> int:
+def main(argv: list[str] | None = None) -> int:
     args = parse_args(argv)
     paths = iter_targets(args.targets)
     if not paths:

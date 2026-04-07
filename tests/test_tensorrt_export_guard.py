@@ -22,10 +22,8 @@ from __future__ import annotations
 
 import hashlib
 import sys
-import types
 from pathlib import Path
-from types import SimpleNamespace
-from unittest.mock import MagicMock, patch, call
+from unittest.mock import MagicMock, patch
 
 import pytest
 import torch
@@ -34,12 +32,12 @@ from torch import nn
 REPO_ROOT = Path(__file__).parent.parent
 sys.path.insert(0, str(REPO_ROOT))
 
-import tensorrt_export_guard as guard
-
+import tensorrt_export_guard as guard  # noqa: E402
 
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
 
 class TinyLinear(nn.Module):
     def __init__(self):
@@ -54,6 +52,7 @@ class TinyLinear(nn.Module):
 # ===========================================================================
 # parse_shape
 # ===========================================================================
+
 
 class TestParseShape:
     def test_valid_4d_shape(self):
@@ -74,6 +73,7 @@ class TestParseShape:
 
     def test_non_integer_raises(self):
         import argparse
+
         with pytest.raises(argparse.ArgumentTypeError):
             guard.parse_shape("1,abc,32")
 
@@ -81,6 +81,7 @@ class TestParseShape:
 # ===========================================================================
 # build_dynamic_axes
 # ===========================================================================
+
 
 class TestBuildDynamicAxes:
     def test_empty_specs_returns_none(self):
@@ -99,6 +100,7 @@ class TestBuildDynamicAxes:
 
     def test_missing_colon_raises(self):
         import argparse
+
         with pytest.raises(argparse.ArgumentTypeError):
             guard.build_dynamic_axes(["0batch"])
 
@@ -111,6 +113,7 @@ class TestBuildDynamicAxes:
 # ===========================================================================
 # describe_tensor
 # ===========================================================================
+
 
 class TestDescribeTensor:
     def test_returns_all_required_keys(self):
@@ -141,6 +144,7 @@ class TestDescribeTensor:
 # state_dict_hash
 # ===========================================================================
 
+
 class TestStateDictHash:
     def test_hash_is_deterministic(self):
         model = TinyLinear()
@@ -165,6 +169,7 @@ class TestStateDictHash:
 # ===========================================================================
 # file_sha256
 # ===========================================================================
+
 
 class TestFileSha256:
     def test_matches_hashlib_for_known_content(self, tmp_dir):
@@ -192,6 +197,7 @@ class TestFileSha256:
 # create_sample_input
 # ===========================================================================
 
+
 class TestCreateSampleInput:
     def test_shape_matches_request(self):
         t = guard.create_sample_input((1, 3, 32, 32), "float32")
@@ -209,6 +215,7 @@ class TestCreateSampleInput:
 # ===========================================================================
 # export_to_onnx (torch.onnx.export mocked)
 # ===========================================================================
+
 
 class TestExportToOnnx:
     def test_torch_onnx_export_called(self, tmp_dir):
@@ -247,9 +254,11 @@ class TestExportToOnnx:
 # validate_onnx (onnx mocked)
 # ===========================================================================
 
+
 class TestValidateOnnx:
     def test_skips_when_onnx_unavailable(self, tmp_dir, caplog):
         import logging
+
         onnx_path = tmp_dir / "fake.onnx"
         onnx_path.write_bytes(b"fake")
 
@@ -280,6 +289,7 @@ class TestValidateOnnx:
 # ===========================================================================
 # lint_onnx_graph (onnx mocked)
 # ===========================================================================
+
 
 class TestLintOnnxGraph:
     def test_returns_empty_when_onnx_unavailable(self, tmp_dir):
@@ -367,6 +377,7 @@ class TestLintOnnxGraph:
 # run_trtexec
 # ===========================================================================
 
+
 class TestRunTrtexec:
     def test_returns_none_when_trtexec_not_found(self, tmp_dir):
         with patch("shutil.which", return_value=None):
@@ -385,8 +396,7 @@ class TestRunTrtexec:
         # Fake a successful engine creation
         engine_path.touch()
 
-        with patch("shutil.which", return_value="/usr/bin/trtexec"), \
-             patch("subprocess.run") as mock_run:
+        with patch("shutil.which", return_value="/usr/bin/trtexec"), patch("subprocess.run") as mock_run:
             guard.run_trtexec(
                 onnx_path=onnx_path,
                 engine_path=engine_path,
@@ -403,6 +413,7 @@ class TestRunTrtexec:
 # resolve_factory
 # ===========================================================================
 
+
 class TestResolveFactory:
     def test_missing_factory_attribute_raises(self, tmp_dir):
         script = tmp_dir / "model_script.py"
@@ -413,14 +424,11 @@ class TestResolveFactory:
     def test_non_module_return_raises_type_error(self, tmp_dir):
         script = tmp_dir / "model_script.py"
         script.write_text("def create_model(): return 'not a module'\n")
-        with pytest.raises(TypeError, match="nn.Module"):
+        with pytest.raises(TypeError, match=r"nn\.Module"):
             guard.resolve_factory(str(script), "create_model")
 
     def test_valid_factory_returns_nn_module(self, tmp_dir):
         script = tmp_dir / "model_script.py"
-        script.write_text(
-            "import torch.nn as nn\n"
-            "def create_model(): return nn.Linear(4, 2)\n"
-        )
+        script.write_text("import torch.nn as nn\ndef create_model(): return nn.Linear(4, 2)\n")
         model = guard.resolve_factory(str(script), "create_model")
         assert isinstance(model, nn.Module)

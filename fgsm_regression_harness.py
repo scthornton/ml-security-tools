@@ -16,11 +16,14 @@ import importlib.util
 import json
 import logging
 from pathlib import Path
-from typing import Dict, Iterable, List, Optional, Sequence, Tuple
+from typing import TYPE_CHECKING
 
 import torch
 from torch import nn
 from torch.utils.data import DataLoader, Dataset, TensorDataset
+
+if TYPE_CHECKING:
+    from collections.abc import Iterable, Sequence
 
 try:
     from torchvision import transforms  # type: ignore
@@ -193,8 +196,8 @@ def evaluate_model(
     cw_steps: int,
     cw_lr: float,
     cw_confidence: float,
-    max_batches: Optional[int] = None,
-) -> Dict[str, float]:
+    max_batches: int | None = None,
+) -> dict[str, float]:
     clean_correct = 0
     total = 0
     attack_correct = {attack: 0 for attack in attacks}
@@ -241,14 +244,14 @@ def evaluate_model(
     return results
 
 
-def load_baseline(path: Path) -> Dict[str, Dict[str, Dict[str, float]]]:
+def load_baseline(path: Path) -> dict[str, dict[str, dict[str, float]]]:
     if not path.exists():
         return {}
     data = json.loads(path.read_text())
     return {str(k): dict(v) for k, v in data.items()}
 
 
-def save_baseline(path: Path, baseline: Dict[str, Dict[str, Dict[str, float]]]) -> None:
+def save_baseline(path: Path, baseline: dict[str, dict[str, dict[str, float]]]) -> None:
     path.write_text(json.dumps(baseline, indent=2) + "\n")
 
 
@@ -268,12 +271,16 @@ def parse_args() -> argparse.Namespace:
         choices=ATTACK_CHOICES,
         help="Attack types to run (default: fgsm).",
     )
-    parser.add_argument("--pgd-steps", type=int, default=20, help="Number of PGD steps (default: 20, per Madry et al.).")
+    parser.add_argument(
+        "--pgd-steps", type=int, default=20, help="Number of PGD steps (default: 20, per Madry et al.)."
+    )
     parser.add_argument("--pgd-alpha", type=float, default=0.005, help="PGD step size.")
     parser.add_argument("--cw-steps", type=int, default=10, help="Number of CW optimization steps.")
     parser.add_argument("--cw-lr", type=float, default=0.01, help="Learning rate for CW optimizer.")
     parser.add_argument("--cw-confidence", type=float, default=0.0, help="CW attack confidence margin.")
-    parser.add_argument("--baseline-file", type=Path, default=Path("fgsm_baselines.json"), help="Path to baseline JSON file.")
+    parser.add_argument(
+        "--baseline-file", type=Path, default=Path("fgsm_baselines.json"), help="Path to baseline JSON file."
+    )
     parser.add_argument("--update-baseline", action="store_true", help="Update baseline with current metrics.")
     parser.add_argument("--use-fake-data", action="store_true", help="Use torchvision FakeData if available.")
     parser.add_argument("--max-batches", type=int, default=None, help="Limit the number of batches processed.")
@@ -333,11 +340,7 @@ def main() -> int:
 
     for attack in attacks:
         attack_key = attack
-        prev = (
-            baseline.get(model_key, {})
-            .get(attack_key, {})
-            .get(eps_key)
-        )
+        prev = baseline.get(model_key, {}).get(attack_key, {}).get(eps_key)
         current = results[f"{attack}_epsilon={args.epsilon}"]
         if prev is not None:
             drift = current - prev

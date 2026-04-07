@@ -17,7 +17,6 @@ from __future__ import annotations
 import importlib.util
 import logging
 import sys
-import types
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
@@ -32,9 +31,7 @@ sys.path.insert(0, str(REPO_ROOT))
 # The file is named with a hyphen which prevents normal import; use importlib.
 # The module must be registered in sys.modules BEFORE exec_module so that
 # Python's dataclass decorator can resolve the module's __dict__ by name.
-_spec = importlib.util.spec_from_file_location(
-    "model_inspection", REPO_ROOT / "model-inspection.py"
-)
+_spec = importlib.util.spec_from_file_location("model_inspection", REPO_ROOT / "model-inspection.py")
 model_inspection = importlib.util.module_from_spec(_spec)
 sys.modules["model_inspection"] = model_inspection
 _spec.loader.exec_module(model_inspection)
@@ -54,6 +51,7 @@ inspect_vision_model = model_inspection.inspect_vision_model
 # Helpers
 # ---------------------------------------------------------------------------
 
+
 class TinyLinear(nn.Module):
     def __init__(self, in_features: int = 4, num_classes: int = 3):
         super().__init__()
@@ -68,6 +66,7 @@ class TinyLinear(nn.Module):
 # ===========================================================================
 # first_tensor
 # ===========================================================================
+
 
 class TestFirstTensor:
     def test_tensor_returns_self(self):
@@ -108,6 +107,7 @@ class TestFirstTensor:
 # check_suspicious_weights
 # ===========================================================================
 
+
 class TestCheckSuspiciousWeights:
     def test_clean_model_does_not_warn(self, caplog):
         model = TinyLinear()
@@ -137,11 +137,13 @@ class TestCheckSuspiciousWeights:
 
     def test_integer_parameters_skipped(self, caplog):
         """Non-floating-point parameters (e.g. embedding indices) must not crash."""
+
         class ModelWithIntParam(nn.Module):
             def __init__(self):
                 super().__init__()
                 self.register_buffer("ids", torch.tensor([0, 1, 2], dtype=torch.long))
                 self.linear = nn.Linear(4, 2)
+
         model = ModelWithIntParam()
         # Should not raise; integer buffers are not parameters, but verify robustness
         check_suspicious_weights(model, threshold=100.0)
@@ -161,6 +163,7 @@ class TestCheckSuspiciousWeights:
 # register_activation_watchdog
 # ===========================================================================
 
+
 class TestActivationWatchdog:
     def test_hook_is_removable(self):
         model = TinyLinear()
@@ -171,9 +174,8 @@ class TestActivationWatchdog:
     def test_normal_activation_does_not_warn(self, caplog):
         model = TinyLinear()
         handle = register_activation_watchdog(model, std_threshold=10.0)
-        with caplog.at_level(logging.WARNING, logger="model_inspection"):
-            with torch.no_grad():
-                model(torch.randn(2, 4))
+        with caplog.at_level(logging.WARNING, logger="model_inspection"), torch.no_grad():
+            model(torch.randn(2, 4))
         handle.remove()
         warnings = [r for r in caplog.records if r.levelno >= logging.WARNING]
         assert len(warnings) == 0
@@ -186,24 +188,23 @@ class TestActivationWatchdog:
             model.fc.weight.fill_(1e4)
             model.fc.bias.fill_(0.0)
         handle = register_activation_watchdog(model, std_threshold=1.0)
-        with caplog.at_level(logging.WARNING, logger="model_inspection"):
-            with torch.no_grad():
-                model(torch.randn(4, 4))
+        with caplog.at_level(logging.WARNING, logger="model_inspection"), torch.no_grad():
+            model(torch.randn(4, 4))
         handle.remove()
         warnings = [r for r in caplog.records if r.levelno >= logging.WARNING]
         assert len(warnings) >= 1
 
     def test_hook_on_module_with_nan_output_warns(self, caplog):
         """A module that outputs NaN should trigger the watchdog."""
+
         class NanModule(nn.Module):
             def forward(self, x):
                 return torch.full_like(x, float("nan"))
 
         model = NanModule()
         handle = register_activation_watchdog(model, std_threshold=10.0)
-        with caplog.at_level(logging.WARNING, logger="model_inspection"):
-            with torch.no_grad():
-                model(torch.randn(2, 4))
+        with caplog.at_level(logging.WARNING, logger="model_inspection"), torch.no_grad():
+            model(torch.randn(2, 4))
         handle.remove()
         warnings = [r for r in caplog.records if r.levelno >= logging.WARNING]
         assert len(warnings) >= 1
@@ -212,6 +213,7 @@ class TestActivationWatchdog:
 # ===========================================================================
 # fgsm_attack (model_inspection version — untargeted, uses argmax as target)
 # ===========================================================================
+
 
 class TestFgsmAttackInspection:
     def test_output_shape_matches_input(self):
@@ -235,6 +237,7 @@ class TestFgsmAttackInspection:
 
     def test_no_logits_raises_runtime_error(self):
         """A model that returns None for logits should raise RuntimeError."""
+
         class NoLogitsModel(nn.Module):
             def forward(self, x):
                 return None
@@ -248,6 +251,7 @@ class TestFgsmAttackInspection:
 # ===========================================================================
 # predict_class
 # ===========================================================================
+
 
 class TestPredictClass:
     def test_output_shape_is_batch_size(self):
@@ -277,6 +281,7 @@ class TestPredictClass:
 # inspect_model dispatch
 # ===========================================================================
 
+
 class TestInspectModelDispatch:
     def test_unknown_modality_logs_error(self, caplog):
         spec = ModelSpec(name="any", modality="audio")
@@ -302,6 +307,7 @@ class TestInspectModelDispatch:
 # inspect_text_model — short-circuit on load failure (no downloads)
 # ===========================================================================
 
+
 class TestInspectTextModel:
     def test_oserror_on_load_logs_error_and_returns(self, caplog):
         """When local_files_only=True and model is not cached, OSError is caught."""
@@ -320,8 +326,10 @@ class TestInspectTextModel:
 
         fake_output = SimpleNamespace(logits=torch.randn(1, 4, 3))
 
-        with patch.object(model_inspection, "AutoModelForCausalLM") as mock_causal, \
-             patch.object(model_inspection, "AutoTokenizer") as mock_tok:
+        with (
+            patch.object(model_inspection, "AutoModelForCausalLM") as mock_causal,
+            patch.object(model_inspection, "AutoTokenizer") as mock_tok,
+        ):
             mock_causal.from_pretrained.return_value = mock_model
             mock_tok.from_pretrained.return_value = mock_tokenizer
             # Make model(**inputs) work by patching forward
@@ -333,6 +341,7 @@ class TestInspectTextModel:
 # ===========================================================================
 # inspect_vision_model — short-circuit on load failure
 # ===========================================================================
+
 
 class TestInspectVisionModel:
     def test_oserror_on_load_logs_error_and_returns(self, caplog):

@@ -16,12 +16,9 @@ Coverage targets
 
 from __future__ import annotations
 
-import importlib
 import json
 import sys
-import types
 from pathlib import Path
-from unittest.mock import MagicMock, patch
 
 import pytest
 import torch
@@ -36,10 +33,10 @@ sys.path.insert(0, str(REPO_ROOT))
 
 import fgsm_regression_harness as harness  # noqa: E402
 
-
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
 
 def _make_model(in_features: int = 8, num_classes: int = 4) -> nn.Module:
     """Return a tiny deterministic model for CPU-only tests."""
@@ -49,9 +46,7 @@ def _make_model(in_features: int = 8, num_classes: int = 4) -> nn.Module:
     return model
 
 
-def _make_dataloader(
-    samples: int = 8, in_features: int = 8, num_classes: int = 4, batch_size: int = 4
-) -> DataLoader:
+def _make_dataloader(samples: int = 8, in_features: int = 8, num_classes: int = 4, batch_size: int = 4) -> DataLoader:
     torch.manual_seed(42)
     data = torch.randn(samples, in_features).clamp(-1.0, 1.0)
     labels = torch.randint(0, num_classes, (samples,))
@@ -62,6 +57,7 @@ def _make_dataloader(
 # ===========================================================================
 # clamp_like
 # ===========================================================================
+
 
 class TestClampLike:
     def test_values_within_epsilon_are_unchanged(self):
@@ -92,6 +88,7 @@ class TestClampLike:
 # ===========================================================================
 # fgsm_attack
 # ===========================================================================
+
 
 class TestFgsmAttack:
     def test_output_shape_matches_input(self, tiny_linear, batch_inputs_1d, batch_targets_4class):
@@ -139,27 +136,19 @@ class TestFgsmAttack:
 # pgd_attack
 # ===========================================================================
 
+
 class TestPgdAttack:
     def test_output_shape_matches_input(self, tiny_linear, batch_inputs_1d, batch_targets_4class):
-        adv = harness.pgd_attack(
-            tiny_linear, batch_inputs_1d, batch_targets_4class,
-            epsilon=0.05, alpha=0.01, steps=3
-        )
+        adv = harness.pgd_attack(tiny_linear, batch_inputs_1d, batch_targets_4class, epsilon=0.05, alpha=0.01, steps=3)
         assert adv.shape == batch_inputs_1d.shape
 
     def test_output_within_global_clamp(self, tiny_linear, batch_inputs_1d, batch_targets_4class):
-        adv = harness.pgd_attack(
-            tiny_linear, batch_inputs_1d, batch_targets_4class,
-            epsilon=0.3, alpha=0.05, steps=5
-        )
+        adv = harness.pgd_attack(tiny_linear, batch_inputs_1d, batch_targets_4class, epsilon=0.3, alpha=0.05, steps=5)
         assert adv.min().item() >= -1.0 - 1e-5
         assert adv.max().item() <= 1.0 + 1e-5
 
     def test_returns_detached_tensor(self, tiny_linear, batch_inputs_1d, batch_targets_4class):
-        adv = harness.pgd_attack(
-            tiny_linear, batch_inputs_1d, batch_targets_4class,
-            epsilon=0.05, alpha=0.01, steps=2
-        )
+        adv = harness.pgd_attack(tiny_linear, batch_inputs_1d, batch_targets_4class, epsilon=0.05, alpha=0.01, steps=2)
         assert not adv.requires_grad
 
     def test_single_step_equals_fgsm_direction_roughly(self, tiny_linear):
@@ -176,11 +165,11 @@ class TestPgdAttack:
 # cw_attack
 # ===========================================================================
 
+
 class TestCwAttack:
     def test_output_shape_matches_input(self, tiny_linear, batch_inputs_1d, batch_targets_4class):
         adv = harness.cw_attack(
-            tiny_linear, batch_inputs_1d, batch_targets_4class,
-            epsilon=0.05, steps=3, lr=0.01, confidence=0.0
+            tiny_linear, batch_inputs_1d, batch_targets_4class, epsilon=0.05, steps=3, lr=0.01, confidence=0.0
         )
         assert adv.shape == batch_inputs_1d.shape
 
@@ -190,31 +179,27 @@ class TestCwAttack:
         inputs = torch.randn(4, 8).clamp(-0.5, 0.5)
         epsilon = 0.1
         adv = harness.cw_attack(
-            tiny_linear, inputs, batch_targets_4class,
-            epsilon=epsilon, steps=5, lr=0.01, confidence=0.0
+            tiny_linear, inputs, batch_targets_4class, epsilon=epsilon, steps=5, lr=0.01, confidence=0.0
         )
         delta = (adv - inputs).abs().max().item()
         assert delta <= epsilon + 1e-5
 
     def test_output_within_global_clamp(self, tiny_linear, batch_inputs_1d, batch_targets_4class):
         adv = harness.cw_attack(
-            tiny_linear, batch_inputs_1d, batch_targets_4class,
-            epsilon=0.5, steps=3, lr=0.01, confidence=0.0
+            tiny_linear, batch_inputs_1d, batch_targets_4class, epsilon=0.5, steps=3, lr=0.01, confidence=0.0
         )
         assert adv.min().item() >= -1.0 - 1e-5
         assert adv.max().item() <= 1.0 + 1e-5
 
     def test_returns_detached_tensor(self, tiny_linear, batch_inputs_1d, batch_targets_4class):
         adv = harness.cw_attack(
-            tiny_linear, batch_inputs_1d, batch_targets_4class,
-            epsilon=0.05, steps=2, lr=0.01, confidence=0.0
+            tiny_linear, batch_inputs_1d, batch_targets_4class, epsilon=0.05, steps=2, lr=0.01, confidence=0.0
         )
         assert not adv.requires_grad
 
     def test_zero_steps_returns_clamped_input(self, tiny_linear, batch_inputs_1d, batch_targets_4class):
         adv = harness.cw_attack(
-            tiny_linear, batch_inputs_1d, batch_targets_4class,
-            epsilon=0.05, steps=0, lr=0.01, confidence=0.0
+            tiny_linear, batch_inputs_1d, batch_targets_4class, epsilon=0.05, steps=0, lr=0.01, confidence=0.0
         )
         assert adv.shape == batch_inputs_1d.shape
 
@@ -222,6 +207,7 @@ class TestCwAttack:
 # ===========================================================================
 # ensure_precision
 # ===========================================================================
+
 
 class TestEnsurePrecision:
     def test_float32_resolves_correctly(self, tiny_linear):
@@ -250,32 +236,25 @@ class TestEnsurePrecision:
 # create_dataset
 # ===========================================================================
 
+
 class TestCreateDataset:
     def test_returns_correct_number_of_samples(self):
-        ds = harness.create_dataset(
-            samples=16, input_shape=(1, 8), num_classes=4, use_fake=False
-        )
+        ds = harness.create_dataset(samples=16, input_shape=(1, 8), num_classes=4, use_fake=False)
         assert len(ds) == 16
 
     def test_tensor_shape_correct(self):
-        ds = harness.create_dataset(
-            samples=8, input_shape=(1, 8), num_classes=4, use_fake=False
-        )
+        ds = harness.create_dataset(samples=8, input_shape=(1, 8), num_classes=4, use_fake=False)
         x, y = ds[0]
         assert x.shape == torch.Size([8])
         assert y.ndim == 0  # scalar label
 
     def test_labels_within_num_classes(self):
-        ds = harness.create_dataset(
-            samples=32, input_shape=(1, 8), num_classes=3, use_fake=False
-        )
+        ds = harness.create_dataset(samples=32, input_shape=(1, 8), num_classes=3, use_fake=False)
         for _, label in ds:
             assert 0 <= label.item() < 3
 
     def test_data_clamped_to_minus1_plus1(self):
-        ds = harness.create_dataset(
-            samples=64, input_shape=(1, 8), num_classes=4, use_fake=False
-        )
+        ds = harness.create_dataset(samples=64, input_shape=(1, 8), num_classes=4, use_fake=False)
         for x, _ in ds:
             assert x.min().item() >= -1.0 - 1e-6
             assert x.max().item() <= 1.0 + 1e-6
@@ -284,6 +263,7 @@ class TestCreateDataset:
 # ===========================================================================
 # evaluate_model
 # ===========================================================================
+
 
 class TestEvaluateModel:
     """Test the main evaluation loop with a mock dataloader."""
@@ -379,14 +359,11 @@ class TestEvaluateModel:
 # load_baseline / save_baseline
 # ===========================================================================
 
+
 class TestBaselinePersistence:
     def test_save_and_reload_round_trip(self, tmp_dir):
         path = tmp_dir / "baseline.json"
-        baseline = {
-            "my_model:create_model": {
-                "fgsm": {"epsilon=0.01": 0.82}
-            }
-        }
+        baseline = {"my_model:create_model": {"fgsm": {"epsilon=0.01": 0.82}}}
         harness.save_baseline(path, baseline)
         loaded = harness.load_baseline(path)
         assert loaded == baseline
@@ -415,6 +392,7 @@ class TestBaselinePersistence:
 # resolve_model
 # ===========================================================================
 
+
 class TestResolveModel:
     def test_missing_factory_raises_attribute_error(self, tmp_dir):
         script = tmp_dir / "dummy_model.py"
@@ -425,19 +403,16 @@ class TestResolveModel:
     def test_non_module_return_raises_type_error(self, tmp_dir):
         script = tmp_dir / "bad_factory.py"
         script.write_text("def create_model(): return 42\n")
-        with pytest.raises(TypeError, match="must return a torch.nn.Module"):
+        with pytest.raises(TypeError, match=r"must return a torch\.nn\.Module"):
             harness.resolve_model(str(script), "create_model")
 
     def test_valid_factory_returns_nn_module(self, tmp_dir):
         script = tmp_dir / "good_model.py"
-        script.write_text(
-            "import torch.nn as nn\n"
-            "def create_model(): return nn.Linear(4, 2)\n"
-        )
+        script.write_text("import torch.nn as nn\ndef create_model(): return nn.Linear(4, 2)\n")
         model = harness.resolve_model(str(script), "create_model")
         assert isinstance(model, nn.Module)
 
     def test_importlib_path_missing_raises(self, tmp_dir):
         """Passing a non-existent path that also can't be imported should raise."""
-        with pytest.raises(Exception):
+        with pytest.raises((ImportError, ModuleNotFoundError)):
             harness.resolve_model("totally_nonexistent_module_xyz", "create_model")

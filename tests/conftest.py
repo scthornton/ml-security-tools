@@ -11,10 +11,8 @@ Design contract
 
 from __future__ import annotations
 
-import json
 import sys
 from pathlib import Path
-from typing import Dict
 
 import pytest
 import torch
@@ -32,6 +30,7 @@ if str(REPO_ROOT) not in sys.path:
 # ---------------------------------------------------------------------------
 # Minimal in-process models that need no downloads
 # ---------------------------------------------------------------------------
+
 
 class TinyLinear(nn.Module):
     """Bare-bones two-layer classifier.  Deterministically initialised."""
@@ -70,6 +69,7 @@ class TinyConvNet(nn.Module):
 # ---------------------------------------------------------------------------
 # pytest fixtures
 # ---------------------------------------------------------------------------
+
 
 @pytest.fixture()
 def tiny_linear() -> TinyLinear:
@@ -116,7 +116,7 @@ def tmp_dir(tmp_path: Path) -> Path:
 
 
 @pytest.fixture()
-def simple_state_dict() -> Dict[str, torch.Tensor]:
+def simple_state_dict() -> dict[str, torch.Tensor]:
     """A minimal state dict with known, clean values."""
     return {
         "weight": torch.ones(4, 4) * 0.5,
@@ -125,9 +125,9 @@ def simple_state_dict() -> Dict[str, torch.Tensor]:
 
 
 @pytest.fixture()
-def poisoned_state_dict() -> Dict[str, torch.Tensor]:
+def poisoned_state_dict() -> dict[str, torch.Tensor]:
     """State dict with NaN, Inf, and extreme values for anomaly tests."""
-    d: Dict[str, torch.Tensor] = {
+    d: dict[str, torch.Tensor] = {
         "weight": torch.ones(4, 4) * 0.5,
         "bias": torch.zeros(4),
     }

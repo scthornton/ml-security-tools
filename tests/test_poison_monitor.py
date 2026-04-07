@@ -15,16 +15,21 @@ sys.path.insert(0, str(REPO_ROOT))
 
 import distributed_poison_monitor as monitor  # noqa: E402
 
-
 # ===========================================================================
 # GradientSnapshot
 # ===========================================================================
 
+
 class TestGradientSnapshot:
     def test_to_json_round_trip(self):
         snap = monitor.GradientSnapshot(
-            rank=0, step=5, global_l2=1.5, global_linf=0.8,
-            mean=0.01, std=0.5, parameter_count=1000,
+            rank=0,
+            step=5,
+            global_l2=1.5,
+            global_linf=0.8,
+            mean=0.01,
+            std=0.5,
+            parameter_count=1000,
         )
         data = json.loads(snap.to_json())
         assert data["rank"] == 0
@@ -36,6 +41,7 @@ class TestGradientSnapshot:
 # GradientSnapshotter
 # ===========================================================================
 
+
 class TestGradientSnapshotter:
     def test_record_captures_stats(self, tmp_path):
         model = nn.Linear(4, 2)
@@ -45,7 +51,10 @@ class TestGradientSnapshotter:
         loss.backward()
 
         snapshotter = monitor.GradientSnapshotter(
-            model=model, rank=0, log_dir=str(tmp_path), buffer_size=100,
+            model=model,
+            rank=0,
+            log_dir=str(tmp_path),
+            buffer_size=100,
         )
         snapshotter.record(step=0)
         assert len(snapshotter.buffer) == 1
@@ -60,7 +69,10 @@ class TestGradientSnapshotter:
         loss.backward()
 
         snapshotter = monitor.GradientSnapshotter(
-            model=model, rank=0, log_dir=str(tmp_path), buffer_size=100,
+            model=model,
+            rank=0,
+            log_dir=str(tmp_path),
+            buffer_size=100,
         )
         snapshotter.record(step=0)
         snapshotter.flush()
@@ -73,7 +85,10 @@ class TestGradientSnapshotter:
     def test_auto_flush_on_buffer_full(self, tmp_path):
         model = nn.Linear(4, 2)
         snapshotter = monitor.GradientSnapshotter(
-            model=model, rank=0, log_dir=str(tmp_path), buffer_size=2,
+            model=model,
+            rank=0,
+            log_dir=str(tmp_path),
+            buffer_size=2,
         )
         for step in range(3):
             inputs = torch.randn(1, 4)
@@ -91,7 +106,9 @@ class TestGradientSnapshotter:
         model = nn.Linear(4, 2)
         # No backward() called — no gradients
         snapshotter = monitor.GradientSnapshotter(
-            model=model, rank=0, log_dir=str(tmp_path),
+            model=model,
+            rank=0,
+            log_dir=str(tmp_path),
         )
         snapshotter.record(step=0)
         assert len(snapshotter.buffer) == 0
@@ -101,6 +118,7 @@ class TestGradientSnapshotter:
 # ===========================================================================
 # CUSUM Detector
 # ===========================================================================
+
 
 class TestCUSUMDetector:
     def test_no_alarm_for_low_values(self):
@@ -139,21 +157,25 @@ class TestCUSUMDetector:
 # compute_divergence
 # ===========================================================================
 
+
 class TestComputeDivergence:
     def test_single_worker_per_step_skipped(self):
         snapshots = [
-            monitor.GradientSnapshot(rank=0, step=0, global_l2=1.0, global_linf=0.5,
-                                      mean=0.0, std=1.0, parameter_count=100),
+            monitor.GradientSnapshot(
+                rank=0, step=0, global_l2=1.0, global_linf=0.5, mean=0.0, std=1.0, parameter_count=100
+            ),
         ]
         result = monitor.compute_divergence(snapshots)
         assert len(result) == 0
 
     def test_two_workers_computes_ratio(self):
         snapshots = [
-            monitor.GradientSnapshot(rank=0, step=0, global_l2=1.0, global_linf=0.5,
-                                      mean=0.0, std=1.0, parameter_count=100),
-            monitor.GradientSnapshot(rank=1, step=0, global_l2=3.0, global_linf=1.5,
-                                      mean=0.1, std=1.2, parameter_count=100),
+            monitor.GradientSnapshot(
+                rank=0, step=0, global_l2=1.0, global_linf=0.5, mean=0.0, std=1.0, parameter_count=100
+            ),
+            monitor.GradientSnapshot(
+                rank=1, step=0, global_l2=3.0, global_linf=1.5, mean=0.1, std=1.2, parameter_count=100
+            ),
         ]
         result = monitor.compute_divergence(snapshots)
         assert 0 in result
@@ -161,12 +183,15 @@ class TestComputeDivergence:
 
     def test_divergent_worker_high_ratio(self):
         snapshots = [
-            monitor.GradientSnapshot(rank=0, step=0, global_l2=1.0, global_linf=0.5,
-                                      mean=0.0, std=1.0, parameter_count=100),
-            monitor.GradientSnapshot(rank=1, step=0, global_l2=1.0, global_linf=0.5,
-                                      mean=0.0, std=1.0, parameter_count=100),
-            monitor.GradientSnapshot(rank=2, step=0, global_l2=10.0, global_linf=5.0,
-                                      mean=0.5, std=3.0, parameter_count=100),
+            monitor.GradientSnapshot(
+                rank=0, step=0, global_l2=1.0, global_linf=0.5, mean=0.0, std=1.0, parameter_count=100
+            ),
+            monitor.GradientSnapshot(
+                rank=1, step=0, global_l2=1.0, global_linf=0.5, mean=0.0, std=1.0, parameter_count=100
+            ),
+            monitor.GradientSnapshot(
+                rank=2, step=0, global_l2=10.0, global_linf=5.0, mean=0.5, std=3.0, parameter_count=100
+            ),
         ]
         result = monitor.compute_divergence(snapshots)
         assert result[0]["l2_ratio"] > 5.0
@@ -175,6 +200,7 @@ class TestComputeDivergence:
 # ===========================================================================
 # simulate_logs
 # ===========================================================================
+
 
 class TestSimulateLogs:
     def test_creates_worker_files(self, tmp_path):
@@ -191,6 +217,7 @@ class TestSimulateLogs:
 # ===========================================================================
 # monitor_logs (offline analysis)
 # ===========================================================================
+
 
 class TestMonitorLogs:
     def test_no_logs_returns_1(self, tmp_path):
@@ -212,8 +239,13 @@ class TestMonitorLogs:
                 for step in range(10):
                     l2 = 100.0 if (rank == 0 and step == 5) else 1.0
                     snap = monitor.GradientSnapshot(
-                        rank=rank, step=step, global_l2=l2, global_linf=l2 / 2,
-                        mean=0.0, std=1.0, parameter_count=100,
+                        rank=rank,
+                        step=step,
+                        global_l2=l2,
+                        global_linf=l2 / 2,
+                        mean=0.0,
+                        std=1.0,
+                        parameter_count=100,
                     )
                     f.write(snap.to_json() + "\n")
 

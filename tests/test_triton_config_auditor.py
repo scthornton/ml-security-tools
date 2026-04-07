@@ -31,19 +31,16 @@ from __future__ import annotations
 import sys
 from pathlib import Path
 from textwrap import dedent
-from unittest.mock import MagicMock, patch
-
-import pytest
 
 REPO_ROOT = Path(__file__).parent.parent
 sys.path.insert(0, str(REPO_ROOT))
 
-import triton_config_auditor as auditor
-
+import triton_config_auditor as auditor  # noqa: E402
 
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
 
 def _write_config(path: Path, text: str) -> Path:
     path.write_text(dedent(text))
@@ -105,6 +102,7 @@ def _minimal_valid_config() -> str:
 # preprocess
 # ===========================================================================
 
+
 class TestPreprocess:
     def test_bracket_open_normalised(self):
         result = auditor.preprocess("dims: [{ name: x }]")
@@ -124,6 +122,7 @@ class TestPreprocess:
 # ===========================================================================
 # parse_block
 # ===========================================================================
+
 
 class TestParseBlock:
     def test_simple_key_value(self):
@@ -161,7 +160,7 @@ class TestParseBlock:
 
     def test_closing_brace_terminates_block(self):
         lines = ["a: 1", "}", "b: 2"]
-        data, consumed = auditor.parse_block(lines)
+        data, _consumed = auditor.parse_block(lines)
         assert "a" in data
         assert "b" not in data  # outer scope, not inside this block
 
@@ -174,6 +173,7 @@ class TestParseBlock:
 # ===========================================================================
 # get_single_value
 # ===========================================================================
+
 
 class TestGetSingleValue:
     def test_returns_first_value(self):
@@ -190,6 +190,7 @@ class TestGetSingleValue:
 # ===========================================================================
 # to_int
 # ===========================================================================
+
 
 class TestToInt:
     def test_plain_integer(self):
@@ -215,6 +216,7 @@ class TestToInt:
 # analyze_config — individual finding triggers
 # ===========================================================================
 
+
 class TestAnalyzeConfig:
     def _analyze(self, text: str, tmp_dir: Path) -> auditor.ConfigReport:
         path = _write_config(tmp_dir / "config.pbtxt", text)
@@ -239,8 +241,7 @@ class TestAnalyzeConfig:
 
     def test_positive_max_batch_size_no_batch_warn(self, tmp_dir):
         report = self._analyze("max_batch_size: 8", tmp_dir)
-        batch_warns = [f for f in report.findings
-                       if "max_batch_size" in f.message and "non-positive" in f.message]
+        batch_warns = [f for f in report.findings if "max_batch_size" in f.message and "non-positive" in f.message]
         assert len(batch_warns) == 0
 
     # --- instance_group ---
@@ -359,6 +360,7 @@ class TestAnalyzeConfig:
 # iter_targets
 # ===========================================================================
 
+
 class TestIterTargets:
     def test_direct_file_resolved(self, tmp_dir):
         path = tmp_dir / "config.pbtxt"
@@ -388,6 +390,7 @@ class TestIterTargets:
 # ===========================================================================
 # ConfigFinding / ConfigReport helpers
 # ===========================================================================
+
 
 class TestConfigReport:
     def test_add_appends_finding(self):

@@ -21,10 +21,13 @@ import math
 import sys
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Dict, Iterable, List, Optional, Tuple
+from typing import TYPE_CHECKING
 
 import torch
 from torch import nn
+
+if TYPE_CHECKING:
+    from collections.abc import Iterable
 
 try:
     from safetensors.torch import save_file as save_safetensor
@@ -49,13 +52,13 @@ def supports_weights_only() -> bool:
 class CheckpointReport:
     path: Path
     loaded: bool = False
-    message: Optional[str] = None
-    anomalies: List[str] = field(default_factory=list)
-    converted: Optional[Path] = None
-    fingerprint_path: Optional[Path] = None
-    kl_divergences: Dict[str, float] = field(default_factory=dict)
+    message: str | None = None
+    anomalies: list[str] = field(default_factory=list)
+    converted: Path | None = None
+    fingerprint_path: Path | None = None
+    kl_divergences: dict[str, float] = field(default_factory=dict)
 
-    def as_dict(self) -> Dict[str, object]:
+    def as_dict(self) -> dict[str, object]:
         return {
             "path": str(self.path),
             "loaded": self.loaded,
@@ -81,7 +84,7 @@ def find_checkpoints(root: Path) -> Iterable[Path]:
             yield path
 
 
-def extract_state_dict(obj: object) -> Optional[Dict[str, torch.Tensor]]:
+def extract_state_dict(obj: object) -> dict[str, torch.Tensor] | None:
     """Best-effort extraction of a state dict from an arbitrary checkpoint object."""
     if isinstance(obj, nn.Module):
         return obj.state_dict()
@@ -89,14 +92,14 @@ def extract_state_dict(obj: object) -> Optional[Dict[str, torch.Tensor]]:
         state_dict = obj["state_dict"]
         if isinstance(state_dict, dict):
             return {k: v for k, v in state_dict.items() if isinstance(v, torch.Tensor)}
-    if isinstance(obj, dict) and all(isinstance(k, str) for k in obj.keys()):
+    if isinstance(obj, dict) and all(isinstance(k, str) for k in obj):
         return {k: v for k, v in obj.items() if isinstance(v, torch.Tensor)}
     return None
 
 
-def inspect_state_dict(state_dict: Dict[str, torch.Tensor], threshold: float) -> List[str]:
+def inspect_state_dict(state_dict: dict[str, torch.Tensor], threshold: float) -> list[str]:
     """Return anomaly descriptions for the provided state dict."""
-    anomalies: List[str] = []
+    anomalies: list[str] = []
     for name, tensor in state_dict.items():
         if not tensor.is_floating_point():
             continue
@@ -115,7 +118,7 @@ def inspect_state_dict(state_dict: Dict[str, torch.Tensor], threshold: float) ->
     return anomalies
 
 
-def tensor_histogram(tensor: torch.Tensor, bins: int = 64) -> Tuple[List[float], Tuple[float, float]]:
+def tensor_histogram(tensor: torch.Tensor, bins: int = 64) -> tuple[list[float], tuple[float, float]]:
     """Compute a normalized histogram for the tensor."""
     flat = tensor.detach().float().cpu().flatten()
     if flat.numel() == 0:
@@ -136,9 +139,9 @@ def tensor_histogram(tensor: torch.Tensor, bins: int = 64) -> Tuple[List[float],
     return hist.tolist(), (min_val, max_val)
 
 
-def compute_fingerprint(state_dict: Dict[str, torch.Tensor]) -> Dict[str, Dict[str, object]]:
+def compute_fingerprint(state_dict: dict[str, torch.Tensor]) -> dict[str, dict[str, object]]:
     """Generate histogram-based fingerprints for each parameter."""
-    fingerprint: Dict[str, Dict[str, object]] = {}
+    fingerprint: dict[str, dict[str, object]] = {}
     for name, tensor in state_dict.items():
         if not tensor.is_floating_point():
             continue
@@ -151,12 +154,12 @@ def compute_fingerprint(state_dict: Dict[str, torch.Tensor]) -> Dict[str, Dict[s
     return fingerprint
 
 
-def kl_divergence(p: List[float], q: List[float]) -> float:
+def kl_divergence(p: list[float], q: list[float]) -> float:
     """Compute KL divergence between two discrete distributions."""
     if len(p) != len(q):
         raise ValueError("Histogram length mismatch for KL divergence.")
     total = 0.0
-    for pi, qi in zip(p, q):
+    for pi, qi in zip(p, q, strict=False):
         pi = max(pi, 1e-10)
         qi = max(qi, 1e-10)
         total += pi * math.log(pi / qi)
@@ -164,13 +167,13 @@ def kl_divergence(p: List[float], q: List[float]) -> float:
 
 
 def compare_fingerprints(
-    reference: Dict[str, Dict[str, object]],
-    candidate: Dict[str, Dict[str, object]],
+    reference: dict[str, dict[str, object]],
+    candidate: dict[str, dict[str, object]],
     kl_threshold: float,
-) -> Tuple[List[str], Dict[str, float]]:
+) -> tuple[list[str], dict[str, float]]:
     """Compare candidate fingerprint against reference and emit anomalies."""
-    anomalies: List[str] = []
-    divergences: Dict[str, float] = {}
+    anomalies: list[str] = []
+    divergences: dict[str, float] = {}
 
     ref_params = set(reference.keys())
     cand_params = set(candidate.keys())
@@ -180,10 +183,7 @@ def compare_fingerprints(
     if missing:
         anomalies.append("Missing parameters: " + ", ".join(sorted(missing)))
     if unexpected:
-        anomalies.append(
-            "Unexpected parameters detected (possible inserted layers): "
-            + ", ".join(sorted(unexpected))
-        )
+        anomalies.append("Unexpected parameters detected (possible inserted layers): " + ", ".join(sorted(unexpected)))
 
     common = ref_params & cand_params
     for name in common:
@@ -194,14 +194,12 @@ def compare_fingerprints(
         divergence = kl_divergence(cand_hist, ref_hist)
         divergences[name] = divergence
         if divergence > kl_threshold:
-            anomalies.append(
-                f"{name}: KL divergence {divergence:.3f} exceeds threshold {kl_threshold}"
-            )
+            anomalies.append(f"{name}: KL divergence {divergence:.3f} exceeds threshold {kl_threshold}")
 
     return anomalies, divergences
 
 
-def convert_to_safetensors(state_dict: Dict[str, torch.Tensor], destination: Path) -> Optional[Path]:
+def convert_to_safetensors(state_dict: dict[str, torch.Tensor], destination: Path) -> Path | None:
     """Write a safetensors file adjacent to the source checkpoint."""
     if save_safetensor is None:
         LOGGER.warning("Skipping safetensors conversion for %s (missing dependency).", destination)
@@ -216,8 +214,8 @@ def triage_checkpoint(
     threshold: float,
     create_safetensor: bool,
     overwrite: bool,
-    fingerprint_dir: Optional[Path],
-    reference_fingerprint: Optional[Dict[str, Dict[str, object]]],
+    fingerprint_dir: Path | None,
+    reference_fingerprint: dict[str, dict[str, object]] | None,
     kl_threshold: float,
 ) -> CheckpointReport:
     """Perform inspection and optional conversion for a single checkpoint file."""
@@ -242,9 +240,7 @@ def triage_checkpoint(
 
     fingerprint = compute_fingerprint(state_dict)
     if reference_fingerprint:
-        fingerprint_anomalies, divergences = compare_fingerprints(
-            reference_fingerprint, fingerprint, kl_threshold
-        )
+        fingerprint_anomalies, divergences = compare_fingerprints(reference_fingerprint, fingerprint, kl_threshold)
         report.anomalies.extend(fingerprint_anomalies)
         report.kl_divergences = divergences
 
@@ -268,7 +264,7 @@ def triage_checkpoint(
     return report
 
 
-def load_reference_fingerprint(path: Optional[Path]) -> Optional[Dict[str, Dict[str, object]]]:
+def load_reference_fingerprint(path: Path | None) -> dict[str, dict[str, object]] | None:
     if path is None:
         return None
     try:
@@ -281,7 +277,7 @@ def load_reference_fingerprint(path: Optional[Path]) -> Optional[Dict[str, Dict[
         return None
 
 
-def parse_args(argv: Optional[List[str]] = None) -> argparse.Namespace:
+def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Inspect PyTorch checkpoints for anomalies.")
     parser.add_argument(
         "paths",
@@ -328,9 +324,9 @@ def parse_args(argv: Optional[List[str]] = None) -> argparse.Namespace:
     return parser.parse_args(argv)
 
 
-def main(argv: Optional[List[str]] = None) -> int:
+def main(argv: list[str] | None = None) -> int:
     args = parse_args(argv)
-    reports: List[CheckpointReport] = []
+    reports: list[CheckpointReport] = []
 
     reference_fingerprint = load_reference_fingerprint(args.reference_fingerprint)
 

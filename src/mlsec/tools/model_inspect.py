@@ -17,10 +17,13 @@ import argparse
 import logging
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Iterable, Optional, Sequence
+from typing import TYPE_CHECKING
 
 import torch
 from torch import nn
+
+if TYPE_CHECKING:
+    from collections.abc import Iterable, Sequence
 
 try:
     from transformers import (
@@ -30,8 +33,7 @@ try:
     )
 except ImportError as exc:  # pragma: no cover - communicated to user at runtime
     raise SystemExit(
-        "The `transformers` package is required. "
-        "Install it with `pip install transformers` and retry."
+        "The `transformers` package is required. Install it with `pip install transformers` and retry."
     ) from exc
 
 
@@ -57,14 +59,14 @@ MODEL_SPECS: Sequence[ModelSpec] = (
 )
 
 
-def first_tensor(obj: object) -> Optional[torch.Tensor]:
+def first_tensor(obj: object) -> torch.Tensor | None:
     """Return the first tensor contained in a nested structure."""
     if isinstance(obj, torch.Tensor):
         return obj
     if hasattr(obj, "logits"):
-        return getattr(obj, "logits")
+        return obj.logits  # type: ignore[no-any-return]
     if hasattr(obj, "last_hidden_state"):
-        return getattr(obj, "last_hidden_state")
+        return obj.last_hidden_state  # type: ignore[no-any-return]
     if isinstance(obj, (list, tuple)):
         for item in obj:
             tensor = first_tensor(item)
@@ -94,9 +96,7 @@ def check_suspicious_weights(model: nn.Module, threshold: float = 100.0) -> None
         LOGGER.info("No suspicious weights detected.")
 
 
-def register_activation_watchdog(
-    model: nn.Module, std_threshold: float = 10.0
-) -> torch.utils.hooks.RemovableHandle:
+def register_activation_watchdog(model: nn.Module, std_threshold: float = 10.0) -> torch.utils.hooks.RemovableHandle:
     """Monitor activations for extreme variance during inference."""
 
     def _watchdog(module: nn.Module, _: Iterable[torch.Tensor], output: object) -> None:
@@ -106,8 +106,7 @@ def register_activation_watchdog(
         with torch.no_grad():
             std_val = tensor.detach().float().std().item()
         if torch.isnan(torch.tensor(std_val)) or torch.isinf(torch.tensor(std_val)):
-            LOGGER.warning("Activation contains NaN/Inf in %s",
-                           module.__class__.__name__)
+            LOGGER.warning("Activation contains NaN/Inf in %s", module.__class__.__name__)
         elif std_val > std_threshold:
             LOGGER.warning(
                 "High activation variance detected in %s (std=%.2f)",
@@ -139,6 +138,7 @@ def fgsm_attack(model: nn.Module, inputs: torch.Tensor, epsilon: float) -> torch
     loss = nn.CrossEntropyLoss()(logits, target)
     loss.backward()
 
+    assert attack_inputs.grad is not None
     perturbation = epsilon * attack_inputs.grad.sign()
     adv_example = attack_inputs + perturbation
     return torch.clamp(adv_example.detach(), -1.0, 1.0)
@@ -162,10 +162,8 @@ def inspect_text_model(spec: ModelSpec, allow_downloads: bool) -> None:
     LOGGER.info("Inspecting text model: %s", spec.name)
     local_only = not allow_downloads
     try:
-        model = AutoModelForCausalLM.from_pretrained(
-            spec.name, local_files_only=local_only)
-        tokenizer = AutoTokenizer.from_pretrained(
-            spec.name, local_files_only=local_only)
+        model = AutoModelForCausalLM.from_pretrained(spec.name, local_files_only=local_only)
+        tokenizer = AutoTokenizer.from_pretrained(spec.name, local_files_only=local_only)
     except OSError as exc:
         LOGGER.error("Failed to load text model '%s': %s", spec.name, exc)
         return
@@ -182,8 +180,7 @@ def inspect_text_model(spec: ModelSpec, allow_downloads: bool) -> None:
     if logits is None:
         LOGGER.warning("Model output did not expose logits.")
     else:
-        LOGGER.info("Sampled last token id: %s",
-                    logits[:, -1, :].argmax(dim=-1).tolist())
+        LOGGER.info("Sampled last token id: %s", logits[:, -1, :].argmax(dim=-1).tolist())
 
     hook.remove()
 
@@ -201,9 +198,7 @@ def inspect_vision_model(spec: ModelSpec, allow_downloads: bool) -> None:
             return
     local_only = not allow_downloads
     try:
-        model = AutoModelForImageClassification.from_pretrained(
-            spec.name, local_files_only=local_only
-        )
+        model = AutoModelForImageClassification.from_pretrained(spec.name, local_files_only=local_only)
     except OSError as exc:
         LOGGER.error("Failed to load vision model '%s': %s", spec.name, exc)
         return
@@ -231,8 +226,7 @@ def inspect_vision_model(spec: ModelSpec, allow_downloads: bool) -> None:
             adv_pred.tolist(),
         )
     else:
-        LOGGER.info(
-            "Model prediction stable under FGSM attack (epsilon=%.3f).", spec.epsilon)
+        LOGGER.info("Model prediction stable under FGSM attack (epsilon=%.3f).", spec.epsilon)
 
     hook.remove()
 
@@ -247,9 +241,8 @@ def inspect_model(spec: ModelSpec, allow_downloads: bool) -> None:
         LOGGER.error("Unknown modality '%s' for %s", spec.modality, spec.name)
 
 
-def parse_args(argv: Optional[list[str]] = None) -> argparse.Namespace:
-    parser = argparse.ArgumentParser(
-        description="Inspect models for basic security issues.")
+def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
+    parser = argparse.ArgumentParser(description="Inspect models for basic security issues.")
     parser.add_argument(
         "--allow-downloads",
         action="store_true",
@@ -258,7 +251,7 @@ def parse_args(argv: Optional[list[str]] = None) -> argparse.Namespace:
     return parser.parse_args(argv)
 
 
-def main(argv: Optional[list[str]] = None) -> int:
+def main(argv: list[str] | None = None) -> int:
     args = parse_args(argv)
     for spec in MODEL_SPECS:
         inspect_model(spec, allow_downloads=args.allow_downloads)

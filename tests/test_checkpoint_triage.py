@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import json
-import math
 import sys
 from pathlib import Path
 
@@ -16,10 +15,10 @@ sys.path.insert(0, str(REPO_ROOT))
 
 import torch_checkpoint_triage as triage  # noqa: E402
 
-
 # ===========================================================================
 # inspect_state_dict
 # ===========================================================================
+
 
 class TestInspectStateDict:
     def test_clean_state_dict_no_anomalies(self, simple_state_dict):
@@ -55,6 +54,7 @@ class TestInspectStateDict:
 # KL divergence
 # ===========================================================================
 
+
 class TestKLDivergence:
     def test_identical_distributions_zero(self):
         p = [0.25, 0.25, 0.25, 0.25]
@@ -76,10 +76,11 @@ class TestKLDivergence:
 # tensor_histogram
 # ===========================================================================
 
+
 class TestTensorHistogram:
     def test_output_is_normalized(self):
         t = torch.randn(100)
-        hist, bounds = triage.tensor_histogram(t, bins=16)
+        hist, _bounds = triage.tensor_histogram(t, bins=16)
         assert abs(sum(hist) - 1.0) < 1e-4
 
     def test_output_has_correct_bins(self):
@@ -89,7 +90,7 @@ class TestTensorHistogram:
 
     def test_empty_tensor(self):
         t = torch.tensor([])
-        hist, bounds = triage.tensor_histogram(t, bins=8)
+        hist, _bounds = triage.tensor_histogram(t, bins=8)
         assert len(hist) == 8
 
     def test_constant_tensor_does_not_crash(self):
@@ -102,6 +103,7 @@ class TestTensorHistogram:
 # ===========================================================================
 # compute_fingerprint / compare_fingerprints
 # ===========================================================================
+
 
 class TestFingerprinting:
     def test_fingerprint_contains_expected_keys(self, simple_state_dict):
@@ -138,6 +140,7 @@ class TestFingerprinting:
 # extract_state_dict
 # ===========================================================================
 
+
 class TestExtractStateDict:
     def test_from_plain_dict(self, simple_state_dict):
         result = triage.extract_state_dict(simple_state_dict)
@@ -164,6 +167,7 @@ class TestExtractStateDict:
 # find_checkpoints
 # ===========================================================================
 
+
 class TestFindCheckpoints:
     def test_finds_pt_files(self, tmp_path):
         (tmp_path / "model.pt").touch()
@@ -188,6 +192,7 @@ class TestFindCheckpoints:
 # CLI main
 # ===========================================================================
 
+
 class TestCheckpointMain:
     def test_main_with_clean_checkpoint(self, tmp_path):
         model = nn.Linear(4, 2)
@@ -200,7 +205,7 @@ class TestCheckpointMain:
         model = nn.Linear(4, 2)
         path = tmp_path / "clean.pt"
         torch.save(model.state_dict(), path)
-        exit_code = triage.main([str(path), "--json"])
+        triage.main([str(path), "--json"])
         captured = capsys.readouterr()
         parsed = json.loads(captured.out)
         assert isinstance(parsed, list)

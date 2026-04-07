@@ -17,11 +17,8 @@ Coverage targets
 
 from __future__ import annotations
 
-import json
-import math
 import sys
 from pathlib import Path
-from unittest.mock import MagicMock, patch
 
 import pytest
 import torch
@@ -30,12 +27,12 @@ from torch import nn
 REPO_ROOT = Path(__file__).parent.parent
 sys.path.insert(0, str(REPO_ROOT))
 
-import torch_checkpoint_triage as triage
-
+import torch_checkpoint_triage as triage  # noqa: E402
 
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
 
 def _save_checkpoint(path: Path, obj: object) -> None:
     torch.save(obj, path)
@@ -44,6 +41,7 @@ def _save_checkpoint(path: Path, obj: object) -> None:
 # ===========================================================================
 # find_checkpoints
 # ===========================================================================
+
 
 class TestFindCheckpoints:
     def test_single_pt_file_yields_itself(self, tmp_dir):
@@ -83,6 +81,7 @@ class TestFindCheckpoints:
 # ===========================================================================
 # extract_state_dict
 # ===========================================================================
+
 
 class TestExtractStateDict:
     def test_plain_dict_of_tensors(self):
@@ -124,6 +123,7 @@ class TestExtractStateDict:
 # inspect_state_dict
 # ===========================================================================
 
+
 class TestInspectStateDict:
     def test_clean_state_dict_returns_no_anomalies(self, simple_state_dict):
         anomalies = triage.inspect_state_dict(simple_state_dict, threshold=100.0)
@@ -156,6 +156,7 @@ class TestInspectStateDict:
 # ===========================================================================
 # tensor_histogram
 # ===========================================================================
+
 
 class TestTensorHistogram:
     def test_correct_bin_count(self):
@@ -190,6 +191,7 @@ class TestTensorHistogram:
 # ===========================================================================
 # compute_fingerprint
 # ===========================================================================
+
 
 class TestComputeFingerprint:
     def test_fingerprint_has_entry_per_float_param(self):
@@ -227,6 +229,7 @@ class TestComputeFingerprint:
 # kl_divergence
 # ===========================================================================
 
+
 class TestKlDivergence:
     def test_identical_distributions_returns_near_zero(self):
         p = [0.25, 0.25, 0.25, 0.25]
@@ -239,7 +242,7 @@ class TestKlDivergence:
 
     def test_uniform_vs_concentrated_is_positive(self):
         p = [0.1, 0.8, 0.1]  # concentrated
-        q = [1/3, 1/3, 1/3]  # uniform
+        q = [1 / 3, 1 / 3, 1 / 3]  # uniform
         # KL(p || q) should be positive
         kl = triage.kl_divergence(p, q)
         assert kl > 0
@@ -255,6 +258,7 @@ class TestKlDivergence:
 # compare_fingerprints
 # ===========================================================================
 
+
 class TestCompareFingerprints:
     def _make_fp(self, name: str = "weight", value: float = 0.5) -> dict:
         state_dict = {name: torch.ones(64) * value}
@@ -262,7 +266,7 @@ class TestCompareFingerprints:
 
     def test_identical_fingerprints_no_anomalies(self):
         fp = self._make_fp()
-        anomalies, divs = triage.compare_fingerprints(fp, fp, kl_threshold=1.0)
+        anomalies, _divs = triage.compare_fingerprints(fp, fp, kl_threshold=1.0)
         assert anomalies == []
 
     def test_missing_parameter_detected(self):
@@ -280,7 +284,7 @@ class TestCompareFingerprints:
     def test_high_kl_divergence_flagged(self):
         ref = triage.compute_fingerprint({"w": torch.ones(256) * 0.1})
         cand = triage.compute_fingerprint({"w": torch.randn(256) * 100.0})
-        anomalies, divs = triage.compare_fingerprints(ref, cand, kl_threshold=0.001)
+        anomalies, _divs = triage.compare_fingerprints(ref, cand, kl_threshold=0.001)
         assert any("KL divergence" in a for a in anomalies)
 
     def test_divergences_dict_populated(self):
@@ -293,6 +297,7 @@ class TestCompareFingerprints:
 # convert_to_safetensors
 # ===========================================================================
 
+
 class TestConvertToSafetensors:
     def test_writes_file_when_safetensors_available(self, tmp_dir):
         state_dict = {"weight": torch.ones(4, 4), "bias": torch.zeros(4)}
@@ -303,6 +308,7 @@ class TestConvertToSafetensors:
 
     def test_skips_when_safetensors_unavailable(self, tmp_dir, caplog):
         import logging
+
         state_dict = {"weight": torch.ones(4, 4)}
         destination = tmp_dir / "model.safetensors"
 
@@ -320,6 +326,7 @@ class TestConvertToSafetensors:
 # ===========================================================================
 # triage_checkpoint (end-to-end with real .pt files)
 # ===========================================================================
+
 
 class TestTriageCheckpoint:
     def test_clean_checkpoint_no_anomalies(self, tmp_dir):
@@ -419,6 +426,7 @@ class TestTriageCheckpoint:
 # ===========================================================================
 # CheckpointReport.as_dict
 # ===========================================================================
+
 
 class TestCheckpointReportAsDict:
     def test_all_keys_present(self, tmp_dir):

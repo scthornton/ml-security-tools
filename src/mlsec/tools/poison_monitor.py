@@ -16,13 +16,15 @@ import argparse
 import json
 import logging
 import socket
-from dataclasses import dataclass, asdict
+from dataclasses import asdict, dataclass
 from pathlib import Path
-from typing import Dict, Iterable, List, Optional, Tuple
+from typing import TYPE_CHECKING
 
 import torch
 from torch import nn
 
+if TYPE_CHECKING:
+    from collections.abc import Iterable
 
 logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
 LOGGER = logging.getLogger("distributed_poison_monitor")
@@ -57,28 +59,28 @@ class GradientSnapshotter:
         rank: int,
         log_dir: str,
         buffer_size: int = 32,
-        broadcast_endpoint: Optional[str] = None,
+        broadcast_endpoint: str | None = None,
     ):
         self.model = model
         self.rank = rank
         self.log_dir = Path(log_dir)
         self.log_dir.mkdir(parents=True, exist_ok=True)
         self.buffer_size = buffer_size
-        self.buffer: List[GradientSnapshot] = []
+        self.buffer: list[GradientSnapshot] = []
         self.log_path = self.log_dir / f"worker_{rank}.jsonl"
 
-        self._sock: Optional[socket.socket] = None
-        self._broadcast_addr: Optional[Tuple[str, int]] = None
+        self._sock: socket.socket | None = None
+        self._broadcast_addr: tuple[str, int] | None = None
         if broadcast_endpoint:
             host, port_str = broadcast_endpoint.split(":")
             self._broadcast_addr = (host, int(port_str))
             self._sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
 
-    def _collect_stats(self) -> Optional[GradientSnapshot]:
+    def _collect_stats(self) -> GradientSnapshot | None:
         total_l2 = 0.0
         total_linf = 0.0
-        means: List[float] = []
-        stds: List[float] = []
+        means: list[float] = []
+        stds: list[float] = []
         param_count = 0
 
         with torch.no_grad():
@@ -112,8 +114,7 @@ class GradientSnapshotter:
     def record(self, step: int) -> None:
         snapshot = self._collect_stats()
         if snapshot is None:
-            LOGGER.warning(
-                "No gradients found for rank %d at step %d.", self.rank, step)
+            LOGGER.warning("No gradients found for rank %d at step %d.", self.rank, step)
             return
         snapshot.step = step
         self.buffer.append(snapshot)
@@ -129,8 +130,7 @@ class GradientSnapshotter:
         with self.log_path.open("a", encoding="utf-8") as handle:
             for snapshot in self.buffer:
                 handle.write(snapshot.to_json() + "\n")
-        LOGGER.debug("Wrote %d gradient snapshots to %s",
-                     len(self.buffer), self.log_path)
+        LOGGER.debug("Wrote %d gradient snapshots to %s", len(self.buffer), self.log_path)
         self.buffer.clear()
 
     def close(self) -> None:
@@ -140,8 +140,8 @@ class GradientSnapshotter:
             self._sock = None
 
 
-def load_logs(log_dir: Path) -> List[GradientSnapshot]:
-    snapshots: List[GradientSnapshot] = []
+def load_logs(log_dir: Path) -> list[GradientSnapshot]:
+    snapshots: list[GradientSnapshot] = []
     for log_path in sorted(log_dir.glob("worker_*.jsonl")):
         for line in log_path.read_text().splitlines():
             if not line.strip():
@@ -151,7 +151,7 @@ def load_logs(log_dir: Path) -> List[GradientSnapshot]:
     return snapshots
 
 
-def compute_step_metrics(snapshots: Iterable[GradientSnapshot]) -> Dict[str, float]:
+def compute_step_metrics(snapshots: Iterable[GradientSnapshot]) -> dict[str, float]:
     l2_vals = [entry.global_l2 for entry in snapshots]
     linf_vals = [entry.global_linf for entry in snapshots]
     mean_vals = [entry.mean for entry in snapshots]
@@ -165,12 +165,12 @@ def compute_step_metrics(snapshots: Iterable[GradientSnapshot]) -> Dict[str, flo
     }
 
 
-def compute_divergence(snapshots: Iterable[GradientSnapshot]) -> Dict[int, Dict[str, float]]:
-    per_step: Dict[int, List[GradientSnapshot]] = {}
+def compute_divergence(snapshots: Iterable[GradientSnapshot]) -> dict[int, dict[str, float]]:
+    per_step: dict[int, list[GradientSnapshot]] = {}
     for snap in snapshots:
         per_step.setdefault(snap.step, []).append(snap)
 
-    divergences: Dict[int, Dict[str, float]] = {}
+    divergences: dict[int, dict[str, float]] = {}
     for step, entries in per_step.items():
         if len(entries) < 2:
             continue
@@ -197,9 +197,9 @@ class CUSUMDetector:
         return False
 
 
-def detect_changepoints(divergences: Dict[int, Dict[str, float]], threshold: float, drift: float) -> List[int]:
+def detect_changepoints(divergences: dict[int, dict[str, float]], threshold: float, drift: float) -> list[int]:
     detector = CUSUMDetector(threshold=threshold, drift=drift)
-    flagged_steps: List[int] = []
+    flagged_steps: list[int] = []
     for step in sorted(divergences.keys()):
         ratio = divergences[step]["l2_ratio"]
         if detector.update(ratio):
@@ -243,16 +243,13 @@ def monitor_logs(
 
     flagged = detect_changepoints(divergences, cusum_threshold, cusum_drift)
     for step in flagged:
-        LOGGER.warning(
-            "CUSUM change-point detected at step %d (slow drift suspected).", step)
+        LOGGER.warning("CUSUM change-point detected at step %d (slow drift suspected).", step)
         alert_count += 1
 
     if alert_count == 0:
-        LOGGER.info(
-            "No divergence exceeding threshold %.2f detected.", threshold)
+        LOGGER.info("No divergence exceeding threshold %.2f detected.", threshold)
     else:
-        LOGGER.warning(
-            "Detected %d suspicious events. Review logs for potential poisoning.", alert_count)
+        LOGGER.warning("Detected %d suspicious events. Review logs for potential poisoning.", alert_count)
     return 0 if alert_count == 0 else 2
 
 
@@ -262,8 +259,7 @@ def simulate_logs(log_dir: Path, steps: int, workers: int) -> None:
         path = log_dir / f"worker_{rank}.jsonl"
         with path.open("w", encoding="utf-8") as handle:
             for step in range(steps):
-                drift_factor = 5.0 if (
-                    rank == 0 and step == steps // 2) else 1.0
+                drift_factor = 5.0 if (rank == 0 and step == steps // 2) else 1.0
                 snapshot = GradientSnapshot(
                     rank=rank,
                     step=step,
@@ -280,7 +276,7 @@ def simulate_logs(log_dir: Path, steps: int, workers: int) -> None:
 def listen_broadcast(
     host: str,
     port: int,
-    expected_workers: Optional[int],
+    expected_workers: int | None,
     threshold: float,
     cusum_threshold: float,
     cusum_drift: float,
@@ -291,15 +287,14 @@ def listen_broadcast(
     sock.settimeout(inactivity_timeout)
     LOGGER.info("Listening for gradient snapshots on %s:%d", host, port)
 
-    per_step: Dict[int, Dict[int, GradientSnapshot]] = {}
+    per_step: dict[int, dict[int, GradientSnapshot]] = {}
     detector = CUSUMDetector(cusum_threshold, cusum_drift)
 
     while True:
         try:
             payload, _ = sock.recvfrom(65535)
-        except socket.timeout:
-            LOGGER.info(
-                "No data received for %.1fs; continuing to listen.", inactivity_timeout)
+        except TimeoutError:
+            LOGGER.info("No data received for %.1fs; continuing to listen.", inactivity_timeout)
             continue
         data = json.loads(payload.decode("utf-8"))
         snapshot = GradientSnapshot(**data)
@@ -322,8 +317,7 @@ def listen_broadcast(
                 metrics["workers"],
             )
         elif detector.update(l2_ratio):
-            LOGGER.warning(
-                "LIVE ALERT step %d: CUSUM drift signal triggered.", snapshot.step)
+            LOGGER.warning("LIVE ALERT step %d: CUSUM drift signal triggered.", snapshot.step)
         else:
             LOGGER.info(
                 "Step %d live metrics OK (l2_ratio=%.2f, linf_ratio=%.2f, workers=%d)",
@@ -336,15 +330,12 @@ def listen_broadcast(
         per_step.pop(snapshot.step, None)
 
 
-def parse_args(argv: Optional[List[str]] = None) -> argparse.Namespace:
-    parser = argparse.ArgumentParser(
-        description="Distributed gradient poison monitor.")
+def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
+    parser = argparse.ArgumentParser(description="Distributed gradient poison monitor.")
     subparsers = parser.add_subparsers(dest="command", required=True)
 
-    monitor_parser = subparsers.add_parser(
-        "monitor", help="Analyze gradient logs for divergence.")
-    monitor_parser.add_argument(
-        "--log-dir", required=True, type=Path, help="Directory containing worker_*.jsonl logs.")
+    monitor_parser = subparsers.add_parser("monitor", help="Analyze gradient logs for divergence.")
+    monitor_parser.add_argument("--log-dir", required=True, type=Path, help="Directory containing worker_*.jsonl logs.")
     monitor_parser.add_argument(
         "--threshold",
         type=float,
@@ -364,12 +355,9 @@ def parse_args(argv: Optional[List[str]] = None) -> argparse.Namespace:
         help="CUSUM drift parameter (default: 0.05).",
     )
 
-    listen_parser = subparsers.add_parser(
-        "listen", help="Listen for live broadcast gradient snapshots.")
-    listen_parser.add_argument(
-        "--host", default="0.0.0.0", help="Host/IP to bind (default: 0.0.0.0).")
-    listen_parser.add_argument(
-        "--port", type=int, default=5454, help="Port to bind (default: 5454).")
+    listen_parser = subparsers.add_parser("listen", help="Listen for live broadcast gradient snapshots.")
+    listen_parser.add_argument("--host", default="0.0.0.0", help="Host/IP to bind (default: 0.0.0.0).")
+    listen_parser.add_argument("--port", type=int, default=5454, help="Port to bind (default: 5454).")
     listen_parser.add_argument(
         "--expected-workers",
         type=int,
@@ -400,8 +388,7 @@ def parse_args(argv: Optional[List[str]] = None) -> argparse.Namespace:
         help="Seconds before logging inactivity heartbeat (default: 30).",
     )
 
-    simulate_parser = subparsers.add_parser(
-        "simulate", help="Generate synthetic logs for demonstration.")
+    simulate_parser = subparsers.add_parser("simulate", help="Generate synthetic logs for demonstration.")
     simulate_parser.add_argument("--log-dir", required=True, type=Path)
     simulate_parser.add_argument("--steps", type=int, default=5)
     simulate_parser.add_argument("--workers", type=int, default=4)
@@ -409,7 +396,7 @@ def parse_args(argv: Optional[List[str]] = None) -> argparse.Namespace:
     return parser.parse_args(argv)
 
 
-def main(argv: Optional[List[str]] = None) -> int:
+def main(argv: list[str] | None = None) -> int:
     args = parse_args(argv)
     if args.command == "monitor":
         return monitor_logs(args.log_dir, args.threshold, args.cusum_threshold, args.cusum_drift)

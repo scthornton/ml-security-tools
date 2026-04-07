@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-import json
+import argparse
 import sys
 from pathlib import Path
 
@@ -15,10 +15,10 @@ sys.path.insert(0, str(REPO_ROOT))
 
 import tensorrt_export_guard as guard  # noqa: E402
 
-
 # ===========================================================================
 # parse_shape
 # ===========================================================================
+
 
 class TestParseShape:
     def test_valid_shape(self):
@@ -31,13 +31,14 @@ class TestParseShape:
         assert guard.parse_shape("1, 3, 16, 16") == (1, 3, 16, 16)
 
     def test_invalid_raises(self):
-        with pytest.raises(Exception):
+        with pytest.raises(argparse.ArgumentTypeError):
             guard.parse_shape("a,b,c")
 
 
 # ===========================================================================
 # describe_tensor
 # ===========================================================================
+
 
 class TestDescribeTensor:
     def test_output_keys(self):
@@ -60,6 +61,7 @@ class TestDescribeTensor:
 # state_dict_hash
 # ===========================================================================
 
+
 class TestStateDictHash:
     def test_deterministic(self):
         model = nn.Linear(4, 2)
@@ -80,6 +82,7 @@ class TestStateDictHash:
 # file_sha256
 # ===========================================================================
 
+
 class TestFileSha256:
     def test_known_content(self, tmp_path):
         f = tmp_path / "test.txt"
@@ -98,6 +101,7 @@ class TestFileSha256:
 # build_dynamic_axes
 # ===========================================================================
 
+
 class TestBuildDynamicAxes:
     def test_empty_returns_none(self):
         assert guard.build_dynamic_axes([]) is None
@@ -112,13 +116,14 @@ class TestBuildDynamicAxes:
         assert 1 in result["input"]
 
     def test_invalid_spec_raises(self):
-        with pytest.raises(Exception):
+        with pytest.raises(argparse.ArgumentTypeError):
             guard.build_dynamic_axes(["bad_format"])
 
 
 # ===========================================================================
 # create_sample_input
 # ===========================================================================
+
 
 class TestCreateSampleInput:
     def test_correct_shape(self):
@@ -134,6 +139,7 @@ class TestCreateSampleInput:
 # ===========================================================================
 # ONNX export (requires onnx)
 # ===========================================================================
+
 
 @pytest.mark.skipif(guard.onnx is None, reason="onnx not installed")
 class TestONNXExport:
@@ -168,13 +174,11 @@ class TestONNXExport:
 # resolve_factory
 # ===========================================================================
 
+
 class TestResolveFactory:
     def test_valid_factory(self, tmp_path):
         script = tmp_path / "my_model.py"
-        script.write_text(
-            "import torch.nn as nn\n"
-            "def create_model(): return nn.Linear(4, 2)\n"
-        )
+        script.write_text("import torch.nn as nn\ndef create_model(): return nn.Linear(4, 2)\n")
         model = guard.resolve_factory(str(script), "create_model")
         assert isinstance(model, nn.Module)
 

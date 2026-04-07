@@ -21,17 +21,20 @@ import shutil
 import subprocess
 import sys
 from pathlib import Path
-from typing import Any, Dict, Iterable, List, Optional, Sequence, Tuple
+from typing import TYPE_CHECKING, Any
 
 import torch
 from torch import nn
+
+if TYPE_CHECKING:
+    from collections.abc import Iterable, Sequence
 
 try:
     import onnx  # type: ignore
     from onnx import numpy_helper  # type: ignore
 except ImportError:  # pragma: no cover - optional dependency
-    onnx = None
-    numpy_helper = None
+    onnx = None  # type: ignore[assignment]
+    numpy_helper = None  # type: ignore[assignment]
 
 try:
     import onnxruntime  # type: ignore
@@ -74,7 +77,7 @@ def resolve_factory(model_script: str, factory_name: str) -> nn.Module:
     return model
 
 
-def parse_shape(shape_str: str) -> Tuple[int, ...]:
+def parse_shape(shape_str: str) -> tuple[int, ...]:
     """Parse a comma-separated tensor shape specification."""
     try:
         return tuple(int(dim.strip()) for dim in shape_str.split(",") if dim.strip())
@@ -82,7 +85,7 @@ def parse_shape(shape_str: str) -> Tuple[int, ...]:
         raise argparse.ArgumentTypeError(f"Invalid shape specification: {shape_str}") from exc
 
 
-def describe_tensor(tensor: torch.Tensor) -> Dict[str, Any]:
+def describe_tensor(tensor: torch.Tensor) -> dict[str, Any]:
     """Return numeric diagnostics for a tensor."""
     with torch.no_grad():
         return {
@@ -119,7 +122,7 @@ def export_to_onnx(
     sample_input: torch.Tensor,
     onnx_path: Path,
     opset: int,
-    dynamic_axes: Optional[Dict[str, Dict[int, str]]],
+    dynamic_axes: dict[str, dict[int, str]] | None,
 ) -> None:
     """Export model to ONNX format."""
     model.eval()
@@ -127,7 +130,7 @@ def export_to_onnx(
     onnx_path.parent.mkdir(parents=True, exist_ok=True)
     torch.onnx.export(
         model,
-        sample_input,
+        (sample_input,),
         onnx_path,
         opset_version=opset,
         do_constant_folding=True,
@@ -139,7 +142,7 @@ def export_to_onnx(
 
 def compare_with_onnxruntime(
     onnx_path: Path, input_tensor: torch.Tensor, reference: torch.Tensor, atol: float, rtol: float
-) -> Optional[float]:
+) -> float | None:
     """Run ONNX Runtime for the exported model and compute the max absolute diff."""
     if onnxruntime is None:
         LOGGER.warning("onnxruntime not available; skipping numerical comparison.")
@@ -159,11 +162,9 @@ def compare_with_onnxruntime(
     return float(diff.item())
 
 
-def lint_onnx_graph(
-    onnx_model_path: Path, allowed_domains: Iterable[str], constant_threshold: float
-) -> List[str]:
+def lint_onnx_graph(onnx_model_path: Path, allowed_domains: Iterable[str], constant_threshold: float) -> list[str]:
     """Inspect the ONNX graph for risky patterns."""
-    findings: List[str] = []
+    findings: list[str] = []
     if onnx is None or numpy_helper is None:
         LOGGER.warning("onnx package not available; skipping structural lint.")
         return findings
@@ -203,8 +204,8 @@ def run_trtexec(
     engine_path: Path,
     precision: str,
     workspace: int,
-    extra_args: Optional[Sequence[str]],
-) -> Optional[Path]:
+    extra_args: Sequence[str] | None,
+) -> Path | None:
     """Invoke NVIDIA trtexec to build a TensorRT engine, if available."""
     trtexec_path = shutil.which("trtexec")
     if trtexec_path is None:
@@ -248,15 +249,24 @@ def validate_onnx(onnx_path: Path) -> None:
     onnx.checker.check_model(model)
 
 
-def parse_args(argv: Optional[Sequence[str]] = None) -> argparse.Namespace:
+def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Export PyTorch models to ONNX/TensorRT with guardrails.")
     parser.add_argument("--model-script", required=True, help="Python module or path that provides the model factory.")
-    parser.add_argument("--factory", default="create_model", help="Factory function to instantiate the model (default: create_model).")
-    parser.add_argument("--input-shape", type=parse_shape, required=True, help="Comma-separated input tensor shape, e.g. 1,3,224,224.")
+    parser.add_argument(
+        "--factory", default="create_model", help="Factory function to instantiate the model (default: create_model)."
+    )
+    parser.add_argument(
+        "--input-shape", type=parse_shape, required=True, help="Comma-separated input tensor shape, e.g. 1,3,224,224."
+    )
     parser.add_argument("--dtype", default="float32", help="Input tensor dtype (default: float32).")
     parser.add_argument("--export-dir", default="export_guard", help="Directory to place generated artifacts.")
     parser.add_argument("--opset", type=int, default=17, help="ONNX opset version to use.")
-    parser.add_argument("--dynamic-axis", action="append", default=[], help="Dynamic axis specification in the form dim:name (e.g. 0:batch).")
+    parser.add_argument(
+        "--dynamic-axis",
+        action="append",
+        default=[],
+        help="Dynamic axis specification in the form dim:name (e.g. 0:batch).",
+    )
     parser.add_argument("--enable-onnxruntime", action="store_true", help="Run ONNX Runtime to compare outputs.")
     parser.add_argument("--rtol", type=float, default=1e-3, help="Relative tolerance for numerical comparisons.")
     parser.add_argument("--atol", type=float, default=1e-3, help="Absolute tolerance for numerical comparisons.")
@@ -284,7 +294,7 @@ def parse_args(argv: Optional[Sequence[str]] = None) -> argparse.Namespace:
     return parser.parse_args(argv)
 
 
-def create_sample_input(shape: Tuple[int, ...], dtype: str) -> torch.Tensor:
+def create_sample_input(shape: tuple[int, ...], dtype: str) -> torch.Tensor:
     """Create a random sample tensor with the requested shape/dtype."""
     torch_dtype = getattr(torch, dtype)
     if torch_dtype is None:
@@ -292,11 +302,11 @@ def create_sample_input(shape: Tuple[int, ...], dtype: str) -> torch.Tensor:
     return torch.randn(shape, dtype=torch_dtype)
 
 
-def build_dynamic_axes(specs: Sequence[str]) -> Optional[Dict[str, Dict[int, str]]]:
+def build_dynamic_axes(specs: Sequence[str]) -> dict[str, dict[int, str]] | None:
     """Parse dynamic axis specifications like '0:batch'."""
     if not specs:
         return None
-    axes: Dict[int, str] = {}
+    axes: dict[int, str] = {}
     for spec in specs:
         if ":" not in spec:
             raise argparse.ArgumentTypeError(f"Invalid dynamic axis spec: {spec}")
@@ -305,7 +315,7 @@ def build_dynamic_axes(specs: Sequence[str]) -> Optional[Dict[str, Dict[int, str
     return {"input": axes, "output": axes}
 
 
-def main(argv: Optional[Sequence[str]] = None) -> int:
+def main(argv: Sequence[str] | None = None) -> int:
     args = parse_args(argv)
     export_dir = Path(args.export_dir)
     export_dir.mkdir(parents=True, exist_ok=True)
@@ -342,7 +352,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     if args.enable_onnxruntime:
         compare_with_onnxruntime(onnx_path, sample_input, reference_output, args.atol, args.rtol)
 
-    engine_path: Optional[Path] = None
+    engine_path: Path | None = None
     if args.build_engine:
         engine_path = export_dir / "model.engine"
         workspace_bytes = args.workspace * (1 << 20)
@@ -355,7 +365,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         )
 
     if args.hash_record:
-        hashes: Dict[str, Any] = {
+        hashes: dict[str, Any] = {
             "pytorch_state_dict": provenance_hash,
             "onnx_sha256": file_sha256(onnx_path),
             "torch_report": torch_report,
