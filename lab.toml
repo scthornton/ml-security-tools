@@ -1,0 +1,20 @@
+id      = "mlsec"
+title   = "ml-security-tools (mlsec CLI)"
+intent  = ["redteam", "modelsec"]
+surface = "spark"
+state   = "gpu"
+proves  = "The genuinely GPU-bound work: adversarial regression gating with FGSM/PGD/CW, and DDP gradient-divergence poison detection. Most notebooks that mention CUDA do not need it; this does."
+
+[run]
+launch = "mlsec adversarial --help"
+ports  = []
+
+[requires]
+bin = ["python3"]
+
+[demo]
+runbook = "README.md"
+beats = [
+  "adversarial regression gate fails a build on robustness drift",
+  "poison monitor catches gradient divergence during distributed training",
+]
